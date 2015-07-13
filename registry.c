@@ -19,6 +19,7 @@
 #include <glib.h>
 #include <glib/gi18n.h>
 #include <gtk/gtk.h>
+#include <sys/stat.h>
 
 #include "sylmain.h"
 #include "plugin.h"
@@ -47,6 +48,8 @@ static struct {
 	GtkWidget *registry_page;
 	GtkListStore *store;
 } pman = {0};
+
+static const guint expire_time = 12 * 60 * 60;
 
 static struct {
 	gboolean loaded;
@@ -79,6 +82,7 @@ static GtkWidget *registry_page_create(void);
 static void registry_set_list_row(GtkTreeIter *, RegistryPluginInfo *);
 static void registry_load(void);
 static void registry_fetch(void);
+static gboolean registry_file_exists(void);
 
 void plugin_load(void)
 {
@@ -134,13 +138,21 @@ static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
 	}
 
 	if (!registry.loaded) {
-		if (is_file_entry_exist(registry.tmp_file)) {
-			/* TODO: check if expired */
+		if (registry_file_exists()) {
 			registry_load();
 		} else {
 			registry_fetch();
 		}
 	}
+}
+
+static gboolean registry_file_exists(void)
+{
+	GStatBuf s;
+
+	return g_stat(registry.tmp_file, &s) == 0 &&
+		S_ISREG(s.st_mode) &&
+		s.st_mtime + expire_time > time(NULL);
 }
 
 static void plugin_manager_foreach_cb(GtkWidget *widget, gpointer data)
