@@ -244,7 +244,7 @@ static GtkWidget *registry_page_create(void)
 	info_renderer = gtk_cell_renderer_text_new();
 	column = gtk_tree_view_column_new_with_attributes
 		(_("Plug-in information"), info_renderer, "text", COL_INFO, NULL);
-	gtk_tree_view_column_set_sizing(column, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
+	gtk_tree_view_column_set_expand(column, TRUE);
 	gtk_tree_view_append_column(GTK_TREE_VIEW(treeview), column);
 
 	action_renderer = gtk_cell_renderer_text_new();
