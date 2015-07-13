@@ -1,0 +1,1 @@
+# Sylpheed Plugin Registry Plugin
