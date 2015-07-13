@@ -42,7 +42,7 @@ static struct {
        GtkWidget *window;
        GtkWidget *original_child;
        GtkWidget *notebook;
-} plugin_manager = {0};
+} pman = {0};
 
 static void init_done_cb(GObject *obj, gpointer data);
 static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
@@ -71,7 +71,7 @@ void plugin_load(void)
 
 void plugin_unload(void)
 {
-       if (plugin_manager.window)
+       if (pman.window)
               unwrap_plugin_manager_window();
        g_print("registry plug-in unloaded!\n");
 }
@@ -97,7 +97,7 @@ static void init_done_cb(GObject *obj, gpointer data)
 static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
               gpointer data)
 {
-       plugin_manager.window = window;
+       pman.window = window;
        wrap_plugin_manager_window();
        syl_plugin_signal_disconnect(plugin_manager_open_cb, NULL);
 }
@@ -105,50 +105,47 @@ static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
 static void plugin_manager_foreach_cb(GtkWidget *widget, gpointer data)
 {
        if (GTK_IS_SCROLLED_WINDOW(widget))
-              plugin_manager.original_child = widget;
+              pman.original_child = widget;
 }
 
 static void wrap_plugin_manager_window(void)
 {
        GtkWidget *label;
-       GtkWidget *vbox = GTK_BIN(plugin_manager.window)->child;
+       GtkWidget *vbox = GTK_BIN(pman.window)->child;
        GtkNotebook *notebook;
 
        /* Find the scrolledwin */
        gtk_container_foreach(GTK_CONTAINER(vbox), plugin_manager_foreach_cb,
                      NULL);
 
-       if (!plugin_manager.original_child) {
+       if (!pman.original_child) {
               g_warning("Couldn't find plugin manager scrolled window");
               return;
        }
 
        /* Wrap the scrolledwin in a notebook */
-       g_object_ref(plugin_manager.original_child);
-       gtk_container_remove(GTK_CONTAINER(vbox),
-                     plugin_manager.original_child);
-       plugin_manager.notebook = gtk_notebook_new();
+       g_object_ref(pman.original_child);
+       gtk_container_remove(GTK_CONTAINER(vbox), pman.original_child);
+       pman.notebook = gtk_notebook_new();
        label = gtk_label_new(_("Your plug-ins"));
-       gtk_notebook_append_page(GTK_NOTEBOOK(plugin_manager.notebook),
-                     plugin_manager.original_child, label);
-       g_object_unref(plugin_manager.original_child);
+       gtk_notebook_append_page(GTK_NOTEBOOK(pman.notebook),
+                     pman.original_child, label);
+       g_object_unref(pman.original_child);
 
        /* Add registry page */
        label = gtk_label_new(_("Plug-in Registry"));
-       gtk_notebook_append_page(GTK_NOTEBOOK(plugin_manager.notebook),
+       gtk_notebook_append_page(GTK_NOTEBOOK(pman.notebook),
                      registry_page_create(), label);
 
-       gtk_widget_show_all(plugin_manager.notebook);
-       gtk_box_pack_start(GTK_BOX(vbox), plugin_manager.notebook,
-                     TRUE, TRUE, 0);
+       gtk_widget_show_all(pman.notebook);
+       gtk_box_pack_start(GTK_BOX(vbox), pman.notebook, TRUE, TRUE, 0);
 }
 
 static void unwrap_plugin_manager_window(void)
 {
-       GtkWidget *vbox = GTK_BIN(plugin_manager.window)->child;
-       gtk_container_remove(GTK_CONTAINER(vbox), plugin_manager.notebook);
-       gtk_box_pack_start(GTK_BOX(vbox), plugin_manager.original_child,
-                     TRUE, TRUE, 0);
+       GtkWidget *vbox = GTK_BIN(pman.window)->child;
+       gtk_container_remove(GTK_CONTAINER(vbox), pman.notebook);
+       gtk_box_pack_start(GTK_BOX(vbox), pman.original_child, TRUE, TRUE, 0);
 }
 
 static GtkWidget *registry_page_create(void)
