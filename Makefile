@@ -1,6 +1,7 @@
 NAME = registry
 LIB = $(NAME).so
-OBJ = $(NAME).o
+SRC = $(wildcard *.c)
+OBJ = $(SRC:.c=.o)
 
 PREFIX ?= /usr/local
 PLUGINS_DIR ?= $(PREFIX)/lib/sylpheed/plugins
@@ -19,7 +20,7 @@ ifdef SYLPHEED_DIR
 endif
 
 $(LIB): $(OBJ)
-	$(CC) $(LDFLAGS) -shared $< -o $@
+	$(CC) $(LDFLAGS) -shared $^ -o $@
 
 $(PLUGINS_DIR):
 	mkdir -p $@
