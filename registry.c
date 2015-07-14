@@ -29,8 +29,8 @@
 #include "spawn_curl.h"
 
 static SylPluginInfo info = {
-	"Sylpheed Plugin Registry Plugin",
-	"0.0.1",
+	"Sylpheed Plug-in Registry",
+	"0.1.0",
 	"Charles Lehner",
 	"Registry plug-in for Sylpheed plug-in system"
 };
