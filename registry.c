@@ -76,11 +76,13 @@ enum {
 };
 
 typedef struct _RegistryPluginInfo {
+	GModule *installed_module;
 	SylPluginInfo syl;
 	gchar *license;
 	gchar *url;
 	gchar *install_sha1sum;
 	gchar *install_url;
+	gboolean user_removed;
 } RegistryPluginInfo;
 
 typedef struct _PluginBox {
@@ -107,6 +109,8 @@ static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
 		gpointer data);
 static void plugin_manager_foreach_cb(GtkWidget *widget, gpointer data);
 static void registry_fetch_cb(GPid pid, gint status, gpointer data);
+static void plugin_box_install_cb(GtkWidget *widget, gpointer data);
+static void plugin_box_remove_cb(GtkWidget *widget, gpointer data);
 
 static void wrap_plugin_manager_window(void);
 static void unwrap_plugin_manager_window(void);
@@ -120,7 +124,8 @@ static void registry_list_clear(void);
 
 static void error_dialog(const gchar *msg);
 
-static SylPluginInfo *get_installed_syl_plugin(const gchar *name);
+static GModule *get_installed_syl_plugin_module(const gchar *name);
+static void unload_syl_plugin(GModule *);
 static gint compare_syl_plugin_versions(SylPluginInfo *a, SylPluginInfo *b);
 
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
@@ -138,8 +143,8 @@ void plugin_load(void)
 
 	g_print("registry plug-in loaded!\n");
 
-	registry.tmp_file = g_strdup_printf("%s%cregistry.ini",
-			get_tmp_dir(), G_DIR_SEPARATOR);
+	registry.tmp_file = g_strconcat(get_tmp_dir(), G_DIR_SEPARATOR_S,
+			"registry.ini", NULL);
 
 	g_snprintf(install_url_key, sizeof install_url_key,
 			"%s_url", PLATFORM);
@@ -278,6 +283,9 @@ static void wrap_plugin_manager_window(void)
 
 	gtk_widget_show_all(pman.notebook);
 	gtk_box_pack_start(GTK_BOX(vbox), pman.notebook, TRUE, TRUE, 0);
+
+	/* dev */
+	gtk_notebook_set_current_page(GTK_NOTEBOOK(pman.notebook), 1);
 }
 
 static void unwrap_plugin_manager_window(void)
@@ -387,6 +395,13 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	gtk_misc_set_alignment(GTK_MISC(license_label), 0, 0);
 	gtk_widget_show(license_label);
 
+	g_signal_connect(G_OBJECT(remove_btn), "clicked",
+			G_CALLBACK(plugin_box_remove_cb), plugin_box);
+	g_signal_connect(G_OBJECT(update_btn), "clicked",
+			G_CALLBACK(plugin_box_install_cb), plugin_box);
+	g_signal_connect(G_OBJECT(install_btn), "clicked",
+			G_CALLBACK(plugin_box_install_cb), plugin_box);
+
 	plugin_box->plugin_info = info;
 	plugin_box->widget = vbox;
 	plugin_box->title_link_btn = title_link_btn;
@@ -411,10 +426,13 @@ static void plugin_box_destroy(PluginBox *pbox)
 static void plugin_box_update_buttons(PluginBox *pbox)
 {
 	RegistryPluginInfo *info = pbox->plugin_info;
-	SylPluginInfo *installed_info = get_installed_syl_plugin(
-			info->syl.name);
-	gboolean can_install = info->install_url != NULL && !installed_info;
-	gboolean can_remove = installed_info != NULL;
+	SylPluginInfo *syl_plugin_get_info  (GModule *module);
+
+	SylPluginInfo *installed_info = info->installed_module ?
+		syl_plugin_get_info(info->installed_module) : NULL;
+	gboolean can_install = info->install_url &&
+		(!installed_info || info->user_removed);
+	gboolean can_remove = installed_info != NULL && !info->user_removed;
 	gboolean can_update = info->install_url != NULL && can_remove &&
 		compare_syl_plugin_versions(&info->syl, installed_info) > 0;
 
@@ -446,6 +464,50 @@ static void registry_list_clear(void)
 	pman.plugin_box_list = NULL;
 }
 
+static void plugin_box_install_cb(GtkWidget *widget, gpointer data)
+{
+	PluginBox *pbox = data;
+	RegistryPluginInfo *info = pbox->plugin_info;
+	/* Download plugin */
+	/* TODO */
+	if (info->user_removed) {
+		info->user_removed = FALSE;
+	}
+	plugin_box_update_buttons(pbox);
+}
+
+static void plugin_box_remove_cb(GtkWidget *widget, gpointer data)
+{
+	PluginBox *pbox = data;
+	GModule *module = pbox->plugin_info->installed_module;
+	const gchar *filename;
+	gchar *dest_filename;
+
+	if (!module) {
+		g_warning("Couldn't find module to remove");
+		return;
+	}
+
+	// unload_syl_plugin(module);
+
+	/* Move the module into the temp directory */
+	filename = g_module_name(module);
+	dest_filename = g_strconcat(get_tmp_dir(), G_DIR_SEPARATOR_S,
+			strrchr(filename, G_DIR_SEPARATOR), NULL);
+	if (g_rename(filename, dest_filename) < 0) {
+		FILE_OP_ERROR(filename, "g_rename");
+		error_dialog(_("Unable to remove the plugin"));
+		g_free(dest_filename);
+		return;
+	}
+
+	g_free(dest_filename);
+	pbox->plugin_info->user_removed = TRUE;
+	plugin_box_update_buttons(pbox);
+
+	/* TODO: show an undo option to put back the module */
+}
+
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 		const gchar *name, const gchar *locale)
 {
@@ -466,6 +528,9 @@ static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 			"license", NULL);
 	info->install_sha1sum = g_key_file_get_string(key_file, name,
 			install_sha1sum_key, NULL);
+	info->installed_module =
+		get_installed_syl_plugin_module(info->syl.name);
+	info->user_removed = FALSE;
 
 	return info;
 }
@@ -549,19 +614,42 @@ static void registry_fetch_cb(GPid pid, gint status, gpointer data)
 }
 
 /* Get the installed version of a plugin */
-static SylPluginInfo *get_installed_syl_plugin(const gchar *name)
+static GModule *get_installed_syl_plugin_module(const gchar *name)
 {
 	GSList *cur;
+	GModule *module;
 	SylPluginInfo *info;
 
 	for (cur = syl_plugin_get_module_list(); cur; cur = cur->next) {
-		info = syl_plugin_get_info(cur->data);
+		module = cur->data;
+		info = syl_plugin_get_info(module);
 		if (info && !g_strcmp0(info->name, name))
-			return info;
+			return module;
 	}
 
 	return NULL;
 }
+
+/* Unload a plugin by reloading all other plugins */
+static void unload_syl_plugin(GModule *module_to_remove)
+{
+	GList *loaded_files = NULL;
+	GSList *cur;
+	GModule *module;
+
+	for (cur = syl_plugin_get_module_list(); cur; cur = cur->next) {
+		module = cur->data;
+		if (module != module_to_remove)
+			loaded_files = g_list_append(loaded_files,
+					(char *)g_module_name(module));
+	}
+
+	syl_plugin_unload_all();
+
+	/* Reload plugins except the one to leave removed */
+	g_list_free_full(loaded_files, (GDestroyNotify)syl_plugin_load);
+}
+
 
 static gint compare_versions(struct version a, struct version b)
 {
