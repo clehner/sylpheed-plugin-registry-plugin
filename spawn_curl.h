@@ -21,7 +21,6 @@
 
 gint spawn_curl(const gchar *url, GChildWatchFunc func, const gchar *outfile,
         gpointer data);
-gchar *read_child_stdout_and_close(gint fd);
 void close_child_stdout(gint fd);
 
 #endif /* __SPAWN_CURL_H__ */

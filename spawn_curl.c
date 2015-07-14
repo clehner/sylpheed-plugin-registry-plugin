@@ -27,20 +27,6 @@
 #include "utils.h"
 #include "spawn_curl.h"
 
-gchar *read_child_stdout_and_close(gint fd)
-{
-	GIOChannel *ch;
-	gchar *str = NULL;
-	gsize len = 0;
-
-	ch = g_io_channel_unix_new(fd);
-	g_io_channel_read_to_end(ch, &str, &len, NULL);
-	g_io_channel_shutdown(ch, TRUE, NULL);
-	g_io_channel_unref(ch);
-
-	return str;
-}
-
 void close_child_stdout(gint fd)
 {
 #ifdef G_OS_WIN32

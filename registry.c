@@ -139,7 +139,7 @@ static void unload_syl_plugin(GModule *);
 static gint compare_syl_plugin_versions(SylPluginInfo *a, SylPluginInfo *b);
 
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
-		const gchar *name, const gchar *locale);
+		const gchar *name);
 static void registry_plugin_info_free(RegistryPluginInfo *info);
 static gint registry_plugin_load(RegistryPluginInfo *info,
 		const gchar *file);
@@ -626,17 +626,17 @@ static gint registry_plugin_uninstall(RegistryPluginInfo *info)
 }
 
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
-		const gchar *name, const gchar *locale)
+		const gchar *name)
 {
 	RegistryPluginInfo *info = g_new(RegistryPluginInfo, 1);
 	GModule *module;
 
 	info->syl.name = g_key_file_get_locale_string(key_file, name,
-			"name", locale, NULL);
+			"name", NULL, NULL);
 	info->syl.version = g_key_file_get_string(key_file, name,
 			"version", NULL);
 	info->syl.description = g_key_file_get_locale_string(key_file,
-			name, "description", locale, NULL);
+			name, "description", NULL, NULL);
 	info->syl.author = g_key_file_get_string(key_file, name, "author",
 			NULL);
 	info->url = g_key_file_get_string(key_file, name, "url", NULL);
@@ -676,7 +676,6 @@ static void registry_load(void)
 	GKeyFile *key_file = g_key_file_new();
 	GError *error = NULL;
 	gchar **groups, **group;
-	const gchar *locale = NULL;
 	RegistryPluginInfo *info;
 
 	if (!g_key_file_load_from_file(key_file, registry.tmp_file,
@@ -696,7 +695,7 @@ static void registry_load(void)
 
 	registry_list_clear();
 	for (group = groups; *group; group++) {
-		info = registry_plugin_info_load(key_file, *group, locale);
+		info = registry_plugin_info_load(key_file, *group);
 		registry_list_add_plugin(info);
 	}
 	g_strfreev(groups);
