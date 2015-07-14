@@ -30,7 +30,7 @@
 
 static SylPluginInfo info = {
 	"Sylpheed Plug-in Registry",
-	"0.1.0",
+	"0.1.1",
 	"Charles Lehner",
 	"Registry plug-in for Sylpheed plug-in system"
 };
@@ -627,7 +627,7 @@ static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 		const gchar *name, const gchar *locale)
 {
 	RegistryPluginInfo *info = g_new(RegistryPluginInfo, 1);
-	GModule *module = get_installed_syl_plugin_module(info->syl.name);
+	GModule *module;
 
 	info->syl.name = g_key_file_get_locale_string(key_file, name,
 			"name", locale, NULL);
@@ -644,6 +644,7 @@ static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 			"license", NULL);
 	info->install_sha1sum = g_key_file_get_string(key_file, name,
 			install_sha1sum_key, NULL);
+	module = get_installed_syl_plugin_module(info->syl.name);
 	info->installed_module = module;
 	info->installed_filename = module ? g_module_name(module) : NULL;
 	info->user_removed = FALSE;
