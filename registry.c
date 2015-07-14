@@ -258,12 +258,12 @@ static GtkWidget *registry_page_create(void)
 	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolledwin),
 			GTK_POLICY_AUTOMATIC,
 			GTK_POLICY_AUTOMATIC);
-	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(scrolledwin),
-			GTK_SHADOW_IN);
 
-	plugins_vbox = gtk_vbox_new(TRUE, 6);
-
-	gtk_container_add(GTK_CONTAINER(scrolledwin), plugins_vbox);
+	plugins_vbox = gtk_vbox_new(FALSE, 2);
+	gtk_widget_show(plugins_vbox);
+	gtk_container_set_border_width(GTK_CONTAINER(plugins_vbox), 2);
+	gtk_scrolled_window_add_with_viewport
+		(GTK_SCROLLED_WINDOW(scrolledwin), plugins_vbox);
 
 	pman.plugins_vbox = plugins_vbox;
 
@@ -325,12 +325,12 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	gtk_widget_show(hbox);
 
 	author_label = gtk_label_new(info->syl.author);
-	gtk_box_pack_start(GTK_BOX(hbox), author_label, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), author_label, TRUE, TRUE, 0);
 	gtk_misc_set_alignment(GTK_MISC(author_label), 0, 0);
 	gtk_widget_show(author_label);
 
 	license_label = gtk_label_new(info->license);
-	gtk_box_pack_start(GTK_BOX(hbox), license_label, FALSE, FALSE, 0);
+	gtk_box_pack_start(GTK_BOX(hbox), license_label, TRUE, TRUE, 0);
 	gtk_misc_set_alignment(GTK_MISC(license_label), 0, 0);
 	gtk_widget_show(license_label);
 
@@ -383,7 +383,7 @@ static void registry_list_add_plugin(RegistryPluginInfo *info)
 	PluginBox *pbox = plugin_box_new(info);
 	pman.plugin_box_list = g_slist_prepend(pman.plugin_box_list, pbox);
 	gtk_box_pack_start(GTK_BOX(pman.plugins_vbox), pbox->widget,
-			TRUE, TRUE, 0);
+			FALSE, FALSE, 0);
 }
 
 static void registry_list_clear(void)
