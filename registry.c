@@ -118,6 +118,8 @@ static void registry_fetch(void);
 static void registry_list_add_plugin(RegistryPluginInfo *);
 static void registry_list_clear(void);
 
+static void error_dialog(const gchar *msg);
+
 static SylPluginInfo *get_installed_syl_plugin(const gchar *name);
 static gint compare_syl_plugin_versions(SylPluginInfo *a, SylPluginInfo *b);
 
@@ -484,7 +486,7 @@ static void registry_plugin_info_free(RegistryPluginInfo *info)
 static void registry_load(void)
 {
 	GKeyFile *key_file = g_key_file_new();
-	GError *error;
+	GError *error = NULL;
 	gchar **groups, **group;
 	const gchar *locale = NULL;
 	RegistryPluginInfo *info;
@@ -499,6 +501,11 @@ static void registry_load(void)
 	}
 
 	groups = g_key_file_get_groups(key_file, NULL);
+	if (!groups) {
+		registry.status = REGISTRY_STATUS_ERROR;
+		return;
+	}
+
 	registry_list_clear();
 	for (group = groups; *group; group++) {
 		info = registry_plugin_info_load(key_file, *group, locale);
@@ -520,10 +527,23 @@ static void registry_fetch(void)
 	}
 }
 
+static void error_dialog(const gchar *msg)
+{
+	GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(pman.window),
+			GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_ERROR,
+			GTK_BUTTONS_CLOSE, msg);
+	g_signal_connect_swapped(dialog, "response",
+			G_CALLBACK(gtk_widget_destroy), dialog);
+	gtk_window_present(GTK_WINDOW(dialog));
+}
+
 static void registry_fetch_cb(GPid pid, gint status, gpointer data)
 {
 	debug_print("registry_fetch_cb\n");
 	registry_load();
+	if (registry.status == REGISTRY_STATUS_ERROR) {
+		error_dialog(_("Couldn't get the plug-ins registry list."));
+	}
 
 	g_spawn_close_pid(pid);
 }
