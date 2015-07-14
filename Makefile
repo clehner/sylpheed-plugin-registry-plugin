@@ -1,10 +1,18 @@
 NAME = registry
 LIB = $(NAME).so
-SRC = $(wildcard *.c)
-OBJ = $(SRC:.c=.o)
+
+MSGFMT=msgfmt --verbose
+MSGMERGE=msgmerge
+XGETTEXT=xgettext
 
 PREFIX ?= /usr/local
 PLUGINS_DIR ?= $(PREFIX)/lib/sylpheed/plugins
+
+SRC = $(wildcard *.c)
+OBJ = $(SRC:.c=.o)
+PO = $(wildcard po/*.po)
+MO = $(PO:%.po=%.mo)
+POT = po/$(NAME).pot
 
 CFLAGS += `pkg-config --cflags gtk+-2.0` -fPIC -g \
 		  -I$(PREFIX)/include/sylpheed \
@@ -29,6 +37,19 @@ CFLAGS += -DPLATFORM=\""$(OS)-$(ARCH)"\"
 
 $(LIB): $(OBJ)
 	$(CC) $(LDFLAGS) -shared $^ -o $@
+
+$(POT): $(SRC)
+	$(XGETTEXT) -k_ -o $@ $<
+
+po/%.po: $(POT)
+	$(MSGMERGE) $@ $< -o $@
+
+%.mo: %.po
+	$(MSGFMT) --check --statistics -o $@ $<
+
+po: $(PO)
+mo: $(MO)
+pot: $(POT)
 
 $(PLUGINS_DIR):
 	mkdir -p $@
