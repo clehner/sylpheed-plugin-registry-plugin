@@ -19,6 +19,14 @@ ifdef SYLPHEED_DIR
 			   -L$(SYLPHEED_DIR)/libsylph/.libs
 endif
 
+OS := $(shell uname -s | tr A-Z a-z)
+ARCH := $(shell uname -m)
+ifneq (,$(findstring nt-,$(OS)))
+	OS=win
+endif
+
+CFLAGS += -DPLATFORM=\""$(OS)-$(ARCH)"\"
+
 $(LIB): $(OBJ)
 	$(CC) $(LDFLAGS) -shared $^ -o $@
 
