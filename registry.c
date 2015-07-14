@@ -51,6 +51,7 @@ static struct {
 	GtkWidget *button_box;
 	GtkWidget *update_check_btn;
 	GtkWidget *notebook;
+	GtkWidget *spinner;
 	GtkWidget *plugins_vbox;
 	GSList *plugin_box_list;
 	gulong update_check_btn_handler_id;
@@ -128,6 +129,7 @@ static GtkWidget *registry_page_create(void);
 static gboolean registry_file_exists(void);
 static void registry_load(void);
 static void registry_fetch(void);
+static void registry_update_spinner();
 static void registry_list_add_plugin(RegistryPluginInfo *);
 static void registry_list_clear(void);
 
@@ -318,6 +320,7 @@ static GtkWidget *registry_page_create(void)
 {
 	GtkWidget *scrolledwin;
 	GtkWidget *plugins_vbox;
+	GtkWidget *spinner;
 
 	scrolledwin = gtk_scrolled_window_new(NULL, NULL);
 	gtk_widget_show(scrolledwin);
@@ -327,11 +330,14 @@ static GtkWidget *registry_page_create(void)
 			GTK_POLICY_AUTOMATIC);
 
 	plugins_vbox = gtk_vbox_new(FALSE, 2);
-	gtk_widget_show(plugins_vbox);
 	gtk_container_set_border_width(GTK_CONTAINER(plugins_vbox), 2);
 	gtk_scrolled_window_add_with_viewport
 		(GTK_SCROLLED_WINDOW(scrolledwin), plugins_vbox);
 
+	spinner = gtk_spinner_new();
+	gtk_box_pack_start(GTK_BOX(plugins_vbox), spinner, FALSE, FALSE, 4);
+
+	pman.spinner = spinner;
 	pman.plugins_vbox = plugins_vbox;
 
 	return scrolledwin;
@@ -389,7 +395,7 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	gtk_box_pack_end(GTK_BOX(hbox), remove_btn, FALSE, FALSE, 0);
 
 	spinner = gtk_spinner_new();
-	gtk_box_pack_end(GTK_BOX(hbox), install_btn, FALSE, FALSE, 0);
+	gtk_box_pack_end(GTK_BOX(hbox), spinner, FALSE, FALSE, 4);
 
 	description_label = gtk_label_new(info->syl.description);
 	gtk_box_pack_start(GTK_BOX(vbox), description_label,
@@ -702,6 +708,17 @@ static void registry_load(void)
 	registry.status = REGISTRY_STATUS_LOADED;
 }
 
+static void registry_update_spinner()
+{
+	if (registry.status == REGISTRY_STATUS_LOADING) {
+		gtk_widget_show(pman.spinner);
+		gtk_spinner_start(GTK_SPINNER(pman.spinner));
+	} else {
+		gtk_widget_hide(pman.spinner);
+		gtk_spinner_stop(GTK_SPINNER(pman.spinner));
+	}
+}
+
 static void registry_fetch(void)
 {
 	registry.status = REGISTRY_STATUS_LOADING;
@@ -712,6 +729,7 @@ static void registry_fetch(void)
 		registry.status = REGISTRY_STATUS_ERROR;
 		error_dialog(_("Couldn't get the plug-ins registry list."));
 	}
+	registry_update_spinner();
 }
 
 static void error_dialog(const gchar *msg)
@@ -742,6 +760,7 @@ static void registry_fetch_cb(GPid pid, gint status, gpointer data)
 		error_dialog(_("Couldn't get the plug-ins registry list."));
 	}
 
+	registry_update_spinner();
 	g_spawn_close_pid(pid);
 }
 
