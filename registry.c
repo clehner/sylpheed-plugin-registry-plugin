@@ -122,7 +122,7 @@ static void plugin_download_cb(GPid pid, gint status, gpointer data);
 static void plugin_box_install_cb(GtkWidget *widget, gpointer data);
 static void plugin_box_remove_cb(GtkWidget *widget, gpointer data);
 
-static void wrap_plugin_manager_window(void);
+static gint wrap_plugin_manager_window(void);
 static void unwrap_plugin_manager_window(void);
 static GtkWidget *registry_page_create(void);
 
@@ -209,7 +209,8 @@ static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
 {
 	if (!pman.window) {
 		pman.window = window;
-		wrap_plugin_manager_window();
+		if (wrap_plugin_manager_window() < 0)
+			return;
 	}
 
 	if (registry.status == REGISTRY_STATUS_NOT_LOADED) {
@@ -272,7 +273,7 @@ static void wrap_plugin_manager_update_check_btn(void)
 		G_CALLBACK(plugin_manager_update_check), NULL);
 }
 
-static void wrap_plugin_manager_window(void)
+static gint wrap_plugin_manager_window(void)
 {
 	GtkWidget *label;
 	GtkWidget *vbox = GTK_BIN(pman.window)->child;
@@ -282,7 +283,7 @@ static void wrap_plugin_manager_window(void)
 			NULL);
 	if (!pman.original_child) {
 		g_warning("Couldn't find plugin manager scrolled window");
-		return;
+		return -1;
 	}
 	wrap_plugin_manager_update_check_btn();
 
@@ -304,6 +305,8 @@ static void wrap_plugin_manager_window(void)
 	gtk_box_pack_start(GTK_BOX(vbox), pman.notebook, TRUE, TRUE, 0);
 
 	gtk_notebook_set_current_page(GTK_NOTEBOOK(pman.notebook), 1);
+
+	return 0;
 }
 
 static void unwrap_plugin_manager_window(void)
