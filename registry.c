@@ -47,6 +47,7 @@ static struct {
 	GtkWidget *original_child;
 	GtkWidget *notebook;
 	GtkWidget *plugins_vbox;
+	GSList *plugin_box_list;
 } pman = {0};
 
 static const guint expire_time = 12 * 60 * 60;
@@ -57,6 +58,12 @@ static gchar install_sha1sum_key[32];
 static struct {
 	gboolean loaded;
 	gchar *tmp_file;
+	enum {
+		REGISTRY_STATUS_NOT_LOADED,
+		REGISTRY_STATUS_LOADING,
+		REGISTRY_STATUS_LOADED,
+		REGISTRY_STATUS_ERROR
+	} status;
 } registry = {0};
 
 enum {
@@ -101,13 +108,19 @@ static void registry_fetch_cb(GPid pid, gint status, gpointer data);
 static void wrap_plugin_manager_window(void);
 static void unwrap_plugin_manager_window(void);
 static GtkWidget *registry_page_create(void);
-static void registry_list_add_plugin(RegistryPluginInfo *);
-static void registry_list_clear(void);
+
+static gboolean registry_file_exists(void);
 static void registry_load(void);
 static void registry_fetch(void);
-static gboolean registry_file_exists(void);
-static SylPluginInfo *registry_get_installed_plugin(RegistryPluginInfo *info);
+static void registry_list_add_plugin(RegistryPluginInfo *);
+static void registry_list_clear(void);
+
+static SylPluginInfo *get_installed_syl_plugin(const gchar *name);
 static gint compare_syl_plugin_versions(SylPluginInfo *a, SylPluginInfo *b);
+
+static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
+		const gchar *name, const gchar *locale);
+static void registry_plugin_info_free(RegistryPluginInfo *info);
 
 static PluginBox *plugin_box_new(RegistryPluginInfo *info);
 static void plugin_box_update_buttons(PluginBox *plugin_box);
@@ -170,7 +183,7 @@ static void plugin_manager_open_cb(GObject *obj, GtkWidget *window,
 		wrap_plugin_manager_window();
 	}
 
-	if (!registry.loaded) {
+	if (registry.status == REGISTRY_STATUS_NOT_LOADED) {
 		if (registry_file_exists()) {
 			registry_load();
 		} else {
@@ -263,6 +276,7 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	GtkWidget *vbox;
 	GtkWidget *hbox;
 	GtkWidget *title_link_btn;
+	GtkWidget *version_label;
 	GtkWidget *install_btn;
 	GtkWidget *remove_btn;
 	GtkWidget *update_btn;
@@ -286,6 +300,10 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 			info->syl.name);
 	gtk_box_pack_start(GTK_BOX(hbox), title_link_btn, FALSE, FALSE, 0);
 	gtk_widget_show(title_link_btn);
+
+	version_label = gtk_label_new(info->syl.version);
+	gtk_box_pack_start(GTK_BOX(hbox), version_label, FALSE, FALSE, 0);
+	gtk_widget_show(version_label);
 
 	install_btn = gtk_button_new_with_label(_("Install"));
 	gtk_box_pack_end(GTK_BOX(hbox), install_btn, FALSE, FALSE, 0);
@@ -331,35 +349,54 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	return plugin_box;
 }
 
+static void plugin_box_destroy(PluginBox *pbox)
+{
+	gtk_widget_destroy(pbox->widget);
+	registry_plugin_info_free(pbox->plugin_info);
+}
+
 static void plugin_box_update_buttons(PluginBox *pbox)
 {
 	RegistryPluginInfo *info = pbox->plugin_info;
-	SylPluginInfo *installed_info = registry_get_installed_plugin(info);
+	SylPluginInfo *installed_info = get_installed_syl_plugin(
+			info->syl.name);
 	gboolean can_install = !installed_info && info->install_url;
 	gboolean can_remove = installed_info != NULL;
-	gboolean can_update = can_install &&
+	gboolean can_update = can_install && can_remove &&
 		compare_syl_plugin_versions(&info->syl, installed_info) > 0;
 
 	gtk_widget_set_visible(pbox->install_btn, can_install && !can_update);
 	gtk_widget_set_visible(pbox->update_btn, can_update);
 	gtk_widget_set_visible(pbox->remove_btn, can_remove);
+
+	if (can_update) {
+		gchar buf[128];
+		g_snprintf(buf, sizeof buf, _("Update from %s to %s"),
+			installed_info->version, info->syl.version);
+		gtk_widget_set_tooltip_text(pbox->update_btn, buf);
+	}
+
 }
 
 static void registry_list_add_plugin(RegistryPluginInfo *info)
 {
 	PluginBox *pbox = plugin_box_new(info);
+	pman.plugin_box_list = g_slist_prepend(pman.plugin_box_list, pbox);
 	gtk_box_pack_start(GTK_BOX(pman.plugins_vbox), pbox->widget,
 			TRUE, TRUE, 0);
 }
 
 static void registry_list_clear(void)
 {
-	pman.plugins_vbox;
+	g_slist_free_full(pman.plugin_box_list,
+			(GDestroyNotify)plugin_box_destroy);
 }
 
-static gint registry_load_plugin_info(GKeyFile *key_file, const gchar *name,
-		const gchar *locale, RegistryPluginInfo *info)
+static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
+		const gchar *name, const gchar *locale)
 {
+
+	RegistryPluginInfo *info = g_new(RegistryPluginInfo, 1);
 	info->syl.name = g_key_file_get_locale_string(key_file, name,
 			"name", locale, NULL);
 	info->syl.version = g_key_file_get_string(key_file, name,
@@ -376,7 +413,19 @@ static gint registry_load_plugin_info(GKeyFile *key_file, const gchar *name,
 	info->install_sha1sum = g_key_file_get_string(key_file, name,
 			install_sha1sum_key, NULL);
 
-	return 0;
+	return info;
+}
+
+static void registry_plugin_info_free(RegistryPluginInfo *info)
+{
+	g_free(info->syl.name);
+	g_free(info->syl.version);
+	g_free(info->syl.description);
+	g_free(info->syl.author);
+	g_free(info->url);
+	g_free(info->install_url);
+	g_free(info->install_sha1sum);
+	g_free(info);
 }
 
 /* read the plugins registry key file from the temp file */
@@ -386,31 +435,34 @@ static void registry_load(void)
 	GError *error;
 	gchar **groups, **group;
 	const gchar *locale = NULL;
+	RegistryPluginInfo *info;
 
 	if (!g_key_file_load_from_file(key_file, registry.tmp_file,
 			G_KEY_FILE_NONE, &error)) {
 		g_warning("g_key_file_load_from_file: %s",
 				error->message);
 		g_error_free(error);
+		registry.status = REGISTRY_STATUS_ERROR;
 		return;
 	}
 
 	groups = g_key_file_get_groups(key_file, NULL);
 	registry_list_clear();
 	for (group = groups; *group; group++) {
-		RegistryPluginInfo info = {0};
-		if (registry_load_plugin_info(key_file, *group, locale,
-					&info) >= 0)
-			registry_list_add_plugin(&info);
+		info = registry_plugin_info_load(key_file, *group, locale);
+		registry_list_add_plugin(info);
 	}
 	g_strfreev(groups);
+	registry.status = REGISTRY_STATUS_LOADED;
 }
 
 static void registry_fetch(void)
 {
+	registry.status = REGISTRY_STATUS_LOADING;
 	/* download the plugins registry key file */
 	if (spawn_curl(url.plugins, registry_fetch_cb, registry.tmp_file,
 				NULL) < 0) {
+		registry.status = REGISTRY_STATUS_ERROR;
 		/* TODO: show failure notification */
 	}
 }
@@ -424,20 +476,17 @@ static void registry_fetch_cb(GPid pid, gint status, gpointer data)
 }
 
 /* Get the installed version of a plugin */
-static SylPluginInfo *registry_get_installed_plugin(RegistryPluginInfo *info)
+static SylPluginInfo *get_installed_syl_plugin(const gchar *name)
 {
 	GSList *cur;
-	const gchar *name;
-
-	g_return_val_if_fail(info != NULL, NULL);
-
-	name = info->syl.name;
+	SylPluginInfo *info;
 
 	for (cur = syl_plugin_get_module_list(); cur; cur = cur->next) {
-		SylPluginInfo *plugin_info = syl_plugin_get_info(cur->data);
-		if (plugin_info && plugin_info->name == name)
-			return plugin_info;
+		info = syl_plugin_get_info(cur->data);
+		if (info && !g_strcmp0(info->name, name))
+			return info;
 	}
+
 	return NULL;
 }
 
