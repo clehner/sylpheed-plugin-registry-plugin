@@ -7,12 +7,14 @@ XGETTEXT=xgettext
 
 PREFIX ?= /usr/local
 PLUGINS_DIR ?= $(PREFIX)/lib/sylpheed/plugins
+LOCALE_DIR ?= $(PREFIX)/share/locale
 
 SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 PO = $(wildcard po/*.po)
 MO = $(PO:%.po=%.mo)
 POT = po/$(NAME).pot
+DIRS = $(PLUGINS_DIR) $(LOCALE_DIR) $(PO:po/%.po=$(LOCALE_DIR)/%/LC_MESSAGES)
 
 CFLAGS += `pkg-config --cflags gtk+-2.0` -fPIC -g \
 		  -I$(PREFIX)/include/sylpheed \
@@ -35,27 +37,34 @@ endif
 
 CFLAGS += -DPLATFORM=\""$(OS)-$(ARCH)"\"
 
+all: $(LIB) $(PO)
+
 $(LIB): $(OBJ)
 	$(CC) $(LDFLAGS) -shared $^ -o $@
 
+pot: $(POT)
 $(POT): $(SRC)
 	$(XGETTEXT) -k_ -o $@ $<
 
+po: $(PO)
 po/%.po: $(POT)
-	$(MSGMERGE) $@ $< -o $@
+	if [ -f $@ ]; then $(MSGMERGE) $@ $< -o $@; else cp $< $@; fi
 
+mo: $(MO)
 %.mo: %.po
 	$(MSGFMT) --check --statistics -o $@ $<
 
-po: $(PO)
-mo: $(MO)
-pot: $(POT)
-
-$(PLUGINS_DIR):
+$(DIRS):
 	mkdir -p $@
 
-install: $(LIB) | $(PLUGINS_DIR)
-	cp $(LIB) $(PLUGINS_DIR)
+install: install-lib install-locale
+
+install-lib: $(LIB) | $(PLUGINS_DIR)
+	cp $< $|
+
+install-locale: $(MO:po/%.mo=install-locale-%)
+install-locale-%: po/%.mo | $(LOCALE_DIR)/%/LC_MESSAGES
+	cp $< $|/$(NAME).mo
 
 uninstall:
 	rm $(PLUGINS_DIR)/$(LIB)
