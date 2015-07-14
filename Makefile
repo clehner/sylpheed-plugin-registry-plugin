@@ -42,12 +42,11 @@ ifdef SYLPHEED_DIR
 			   -L$(SYLPHEED_DIR)/libsylph/.libs
 endif
 
-all: $(LIB) $(PO)
+all: $(LIB)
 
 $(LIB): $(OBJ)
 	$(CC) $(LDFLAGS) -shared $^ -o $@
 
-pot: $(POT)
 $(POT): $(SRC)
 	$(XGETTEXT) -k_ \
 		--package-name="$(PLUGIN_NAME)" \
@@ -55,13 +54,12 @@ $(POT): $(SRC)
 		--msgid-bugs-address="$(MSGID_BUGS_ADDRESS)" \
 		-o $@ $<
 
-po: $(PO)
-po/%.po: $(POT)
-	if [ -f $@ ]; then $(MSGMERGE) $@ $< -o $@; else cp $< $@; fi
-
-mo: $(MO)
 %.mo: %.po
 	$(MSGFMT) --check --statistics -o $@ $<
+
+update-po: $(POT) $(MO:po/%.mo=update-po-%)
+update-po-%: po/%.po
+	$(MSGMERGE) -U $< $(POT)
 
 $(DIRS):
 	mkdir -p $@
@@ -81,4 +79,4 @@ uninstall:
 clean:
 	rm -f $(LIB) $(OBJ) $(MO)
 
-.PHONY: clean install
+.PHONY: clean install update-po
