@@ -29,18 +29,20 @@
 #include "spawn_curl.h"
 
 static SylPluginInfo info = {
-	"Sylpheed Plug-in Registry",
-	"0.1.1",
+	PLUGIN_NAME,
+	PLUGIN_VERSION,
 	"Charles Lehner",
 	"Registry plug-in for Sylpheed plug-in system"
 };
+
+#define SITE_STATIC "https://raw.githubusercontent.com/clehner/sylpheed-plugin-registry/master/"
 
 static struct {
 	const gchar *versions, *site, *plugins;
 } url = {
 	.site     = "https://github.com/clehner/sylpheed-plugin-registry",
-	.versions = "https://raw.githubusercontent.com/clehner/sylpheed-plugin-registry/master/plugin_version.txt",
-	.plugins  = "https://raw.githubusercontent.com/clehner/sylpheed-plugin-registry/master/plugins.ini",
+	.versions = SITE_STATIC "plugin_version.txt",
+	.plugins  = SITE_STATIC "plugins.ini",
 };
 
 static struct {
