@@ -626,8 +626,9 @@ static gint registry_plugin_uninstall(RegistryPluginInfo *info)
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 		const gchar *name, const gchar *locale)
 {
-
 	RegistryPluginInfo *info = g_new(RegistryPluginInfo, 1);
+	GModule *module = get_installed_syl_plugin_module(info->syl.name);
+
 	info->syl.name = g_key_file_get_locale_string(key_file, name,
 			"name", locale, NULL);
 	info->syl.version = g_key_file_get_string(key_file, name,
@@ -643,9 +644,8 @@ static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 			"license", NULL);
 	info->install_sha1sum = g_key_file_get_string(key_file, name,
 			install_sha1sum_key, NULL);
-	info->installed_module =
-		get_installed_syl_plugin_module(info->syl.name);
-	info->installed_filename = g_module_name(info->installed_module);
+	info->installed_module = module;
+	info->installed_filename = module ? g_module_name(module) : NULL;
 	info->user_removed = FALSE;
 	info->id = g_strdup(name);
 	info->in_progress = FALSE;
