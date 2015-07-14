@@ -45,9 +45,12 @@ static struct {
 static struct {
 	GtkWidget *window;
 	GtkWidget *original_child;
+	GtkWidget *button_box;
+	GtkWidget *update_check_btn;
 	GtkWidget *notebook;
 	GtkWidget *plugins_vbox;
 	GSList *plugin_box_list;
+	gulong update_check_btn_handler_id;
 } pman = {0};
 
 static const guint expire_time = 12 * 60 * 60;
@@ -205,6 +208,42 @@ static void plugin_manager_foreach_cb(GtkWidget *widget, gpointer data)
 {
 	if (GTK_IS_SCROLLED_WINDOW(widget))
 		pman.original_child = widget;
+	else if (GTK_IS_BUTTON_BOX(widget))
+		pman.button_box = widget;
+}
+
+static void plugin_manager_button_foreach_cb(GtkWidget *widget,
+		gpointer data)
+{
+	if (GTK_IS_BUTTON(widget) &&
+	    g_strcmp0(GTK_BUTTON(widget)->label_text, GTK_STOCK_CLOSE))
+		pman.update_check_btn = widget;
+}
+
+static gint plugin_manager_update_check(void)
+{
+	registry_fetch();
+	return TRUE;
+}
+
+static void wrap_plugin_manager_update_check_btn(void)
+{
+	if (!pman.button_box) {
+		g_warning("Couldn't find plugin manager button box");
+		return;
+	}
+
+	gtk_container_foreach(GTK_CONTAINER(pman.button_box),
+			plugin_manager_button_foreach_cb, NULL);
+
+	if (!pman.update_check_btn) {
+		g_warning("Couldn't find plugin update check button");
+		return;
+	}
+
+	pman.update_check_btn_handler_id =
+		g_signal_connect(G_OBJECT(pman.update_check_btn), "clicked",
+		G_CALLBACK(plugin_manager_update_check), NULL);
 }
 
 static void wrap_plugin_manager_window(void)
@@ -212,14 +251,14 @@ static void wrap_plugin_manager_window(void)
 	GtkWidget *label;
 	GtkWidget *vbox = GTK_BIN(pman.window)->child;
 
-	/* Find the scrolledwin */
+	/* Find the scrolledwin and update check button */
 	gtk_container_foreach(GTK_CONTAINER(vbox), plugin_manager_foreach_cb,
 			NULL);
-
 	if (!pman.original_child) {
 		g_warning("Couldn't find plugin manager scrolled window");
 		return;
 	}
+	wrap_plugin_manager_update_check_btn();
 
 	/* Wrap the scrolledwin in a notebook */
 	g_object_ref(pman.original_child);
@@ -245,6 +284,10 @@ static void unwrap_plugin_manager_window(void)
 	gtk_container_remove(GTK_CONTAINER(vbox), pman.notebook);
 	gtk_box_pack_start(GTK_BOX(vbox), pman.original_child,
 			TRUE, TRUE, 0);
+	if (pman.update_check_btn)
+		g_signal_handler_disconnect(pman.update_check_btn,
+				pman.update_check_btn_handler_id);
+
 }
 
 static GtkWidget *registry_page_create(void)
@@ -283,6 +326,7 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	GtkWidget *description_label;
 	GtkWidget *author_label;
 	GtkWidget *license_label;
+	gchar buf[512];
 
 	g_return_val_if_fail(info != NULL, NULL);
 
@@ -296,8 +340,13 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 	gtk_widget_show(hbox);
 
-	title_link_btn = gtk_link_button_new_with_label(info->url,
-			info->syl.name);
+	if (info->url) {
+		title_link_btn = gtk_link_button_new_with_label(info->url,
+				info->syl.name);
+	} else {
+		title_link_btn = gtk_label_new(info->syl.name);
+		gtk_misc_set_padding(GTK_MISC(title_link_btn), 2, 2);
+	}
 	gtk_box_pack_start(GTK_BOX(hbox), title_link_btn, FALSE, FALSE, 0);
 	gtk_widget_show(title_link_btn);
 
@@ -324,11 +373,13 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	gtk_box_pack_start(GTK_BOX(vbox), hbox, FALSE, FALSE, 0);
 	gtk_widget_show(hbox);
 
-	author_label = gtk_label_new(info->syl.author);
+	g_snprintf(buf, sizeof buf, _("by %s"), info->syl.author);
+	author_label = gtk_label_new(buf);
 	gtk_box_pack_start(GTK_BOX(hbox), author_label, TRUE, TRUE, 0);
 	gtk_misc_set_alignment(GTK_MISC(author_label), 0, 0);
 	gtk_widget_show(author_label);
 
+	// g_snprintf(buf, sizeof buf, _("License: %s"), info->license);
 	license_label = gtk_label_new(info->license);
 	gtk_box_pack_start(GTK_BOX(hbox), license_label, TRUE, TRUE, 0);
 	gtk_misc_set_alignment(GTK_MISC(license_label), 0, 0);
@@ -360,9 +411,9 @@ static void plugin_box_update_buttons(PluginBox *pbox)
 	RegistryPluginInfo *info = pbox->plugin_info;
 	SylPluginInfo *installed_info = get_installed_syl_plugin(
 			info->syl.name);
-	gboolean can_install = !installed_info && info->install_url;
+	gboolean can_install = info->install_url != NULL && !installed_info;
 	gboolean can_remove = installed_info != NULL;
-	gboolean can_update = can_install && can_remove &&
+	gboolean can_update = info->install_url != NULL && can_remove &&
 		compare_syl_plugin_versions(&info->syl, installed_info) > 0;
 
 	gtk_widget_set_visible(pbox->install_btn, can_install && !can_update);
@@ -390,6 +441,7 @@ static void registry_list_clear(void)
 {
 	g_slist_free_full(pman.plugin_box_list,
 			(GDestroyNotify)plugin_box_destroy);
+	pman.plugin_box_list = NULL;
 }
 
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
@@ -459,6 +511,7 @@ static void registry_load(void)
 static void registry_fetch(void)
 {
 	registry.status = REGISTRY_STATUS_LOADING;
+
 	/* download the plugins registry key file */
 	if (spawn_curl(url.plugins, registry_fetch_cb, registry.tmp_file,
 				NULL) < 0) {
