@@ -563,14 +563,16 @@ static struct version version_from_string(const gchar *str)
 {
 	struct version ver = {0};
 
-	ver.major = atoi(str);
-	if ((str = strchr(str, '.'))) {
-		ver.minor = atoi(++str);
+	if (str) {
+		ver.major = atoi(str);
 		if ((str = strchr(str, '.'))) {
-			ver.micro = atoi(++str);
-			while (isdigit(*str))
-				str++;
-			ver.extra = str;
+			ver.minor = atoi(++str);
+			if ((str = strchr(str, '.'))) {
+				ver.micro = atoi(++str);
+				while (isdigit(*str))
+					str++;
+				ver.extra = str;
+			}
 		}
 	}
 	return ver;
