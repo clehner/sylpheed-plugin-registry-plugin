@@ -57,8 +57,9 @@ void close_child_stdout(gint fd)
 gint spawn_curl(const gchar *url, GChildWatchFunc func, const gchar *outfile,
         gpointer data)
 {
-	const gchar *cmdline[10] = {"curl", "--silent", "--max-time", "10"};
-	gint argc = 4;
+	const gchar *cmdline[11] = {"curl", "--location", "--silent",
+		"--max-time", "10"};
+	gint argc = 5;
 	gint child_stdout = 0;
 	GPid pid;
 	GError *error = NULL;
