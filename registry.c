@@ -38,9 +38,9 @@ static SylPluginInfo info = {
 static struct {
 	const gchar *versions, *site, *plugins;
 } url = {
-	.versions = "http://localhost/sylpheed-plugin-registry/plugin_version.txt",
-	.site     = "http://localhost/sylpheed-plugin-registry/plugins.html",
-	.plugins  = "http://localhost/sylpheed-plugin-registry/plugins.ini",
+	.site     = "https://github.com/clehner/sylpheed-plugin-registry",
+	.versions = "https://raw.githubusercontent.com/clehner/sylpheed-plugin-registry/master/plugin_version.txt",
+	.plugins  = "https://raw.githubusercontent.com/clehner/sylpheed-plugin-registry/master/plugins.ini",
 };
 
 static struct {
