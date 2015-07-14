@@ -145,6 +145,8 @@ static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 static void registry_plugin_info_free(RegistryPluginInfo *info);
 static gint registry_plugin_load(RegistryPluginInfo *info,
 		const gchar *file);
+static gint registry_plugin_verify(RegistryPluginInfo *info,
+		const gchar *file);
 static gint registry_plugin_install(RegistryPluginInfo *info,
 		const gchar *file);
 static gint registry_plugin_uninstall(RegistryPluginInfo *info);
@@ -529,8 +531,13 @@ static void plugin_download_cb(GPid pid, gint status, gpointer data)
 	PluginBox *pbox = data;
 	RegistryPluginInfo *info = pbox->plugin_info;
 
+	/* Verify the plugin's sha1sum */
+	if (registry_plugin_verify(info,
+				info->tmp_download_filename) < 0) {
+		error_dialog(_("The plug-in could not be verified"));
 	/* Load the file from the temp directory */
-	if (registry_plugin_load(info, info->tmp_download_filename) < 0) {
+	} else if (registry_plugin_load(info,
+				info->tmp_download_filename) < 0) {
 		error_dialog(_("Unable to load the plugin"));
 	/* Install the file to the plugins directory */
 	} else if (registry_plugin_install(info,
@@ -544,6 +551,38 @@ static void plugin_download_cb(GPid pid, gint status, gpointer data)
 	info->in_progress = FALSE;
 	plugin_box_update_spinner(pbox);
 	plugin_box_update_buttons(pbox);
+}
+
+static gint registry_plugin_verify(RegistryPluginInfo *info,
+		const gchar *file)
+{
+	gchar *cmdline[] = {"sha1sum", (gchar *)file, NULL};
+	gchar *sum;
+	gchar *output;
+	gchar *child_stdout;
+	gint ret;
+	GError *error;
+
+	sum = info->install_sha1sum;
+	if (!sum) return -1;
+
+	if (g_spawn_sync(NULL, cmdline, NULL,
+			G_SPAWN_STDERR_TO_DEV_NULL | G_SPAWN_SEARCH_PATH,
+			NULL, NULL, &output, NULL, &ret, &error) == FALSE) {
+		g_warning("Can't execute sha1sum %s: %s\n", file,
+				error ? error->message : NULL);
+		g_error_free(error);
+		return -1;
+	}
+
+	if (ret == 0) {
+		debug_print("sha1sum: %s. goal: %d", output, sum);
+		ret = strncmp(sum, output, 40);
+	}
+
+	g_free(output);
+
+	return ret == 0 ? 0 : -1;
 }
 
 static gint registry_plugin_load(RegistryPluginInfo *info, const gchar *file)

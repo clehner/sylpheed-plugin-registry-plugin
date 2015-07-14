@@ -2,7 +2,7 @@ NAME = registry
 LIB = $(NAME).so
 
 PLUGIN_NAME=Sylpheed Plug-in Registry
-PLUGIN_VERSION=0.1.1
+PLUGIN_VERSION=0.1.2
 MSGID_BUGS_ADDRESS=msgs.cel@celehner.com
 
 MSGFMT=msgfmt --verbose
