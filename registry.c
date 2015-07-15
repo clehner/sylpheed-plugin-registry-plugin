@@ -120,6 +120,7 @@ static void plugin_manager_foreach_cb(GtkWidget *widget, gpointer data);
 static void registry_fetch_cb(GPid pid, gint status, gpointer data);
 static void plugin_download_cb(GPid pid, gint status, gpointer data);
 static void plugin_box_install_cb(GtkWidget *widget, gpointer data);
+static void plugin_box_update_cb(GtkWidget *widget, gpointer data);
 static void plugin_box_remove_cb(GtkWidget *widget, gpointer data);
 
 static gint wrap_plugin_manager_window(void);
@@ -143,6 +144,7 @@ static gint compare_syl_plugin_versions(SylPluginInfo *a, SylPluginInfo *b);
 static RegistryPluginInfo *registry_plugin_info_load(GKeyFile *key_file,
 		const gchar *name);
 static void registry_plugin_info_free(RegistryPluginInfo *info);
+static gint registry_plugin_download_install(PluginBox *pbox);
 static gint registry_plugin_load(RegistryPluginInfo *info,
 		const gchar *file);
 static gint registry_plugin_verify(RegistryPluginInfo *info,
@@ -427,7 +429,7 @@ PluginBox *plugin_box_new(RegistryPluginInfo *info)
 	g_signal_connect(G_OBJECT(remove_btn), "clicked",
 			G_CALLBACK(plugin_box_remove_cb), plugin_box);
 	g_signal_connect(G_OBJECT(update_btn), "clicked",
-			G_CALLBACK(plugin_box_install_cb), plugin_box);
+			G_CALLBACK(plugin_box_update_cb), plugin_box);
 	g_signal_connect(G_OBJECT(install_btn), "clicked",
 			G_CALLBACK(plugin_box_install_cb), plugin_box);
 
@@ -456,11 +458,11 @@ static void plugin_box_destroy(PluginBox *pbox)
 static void plugin_box_update_buttons(PluginBox *pbox)
 {
 	RegistryPluginInfo *info = pbox->plugin_info;
-	SylPluginInfo *syl_plugin_get_info  (GModule *module);
+	GtkWidget *spinner = pbox->spinner;
 
 	SylPluginInfo *installed_info = info->installed_module ?
 		syl_plugin_get_info(info->installed_module) : NULL;
-	gboolean can_install = info->install_url &&
+	gboolean can_install = info->install_url && !info->in_progress &&
 		(!installed_info || info->user_removed);
 	gboolean can_remove = installed_info != NULL && !info->user_removed;
 	gboolean can_update = info->install_url != NULL && can_remove &&
@@ -477,11 +479,6 @@ static void plugin_box_update_buttons(PluginBox *pbox)
 		gtk_widget_set_tooltip_text(pbox->update_btn, buf);
 	}
 
-}
-
-static void plugin_box_update_spinner(PluginBox *pbox)
-{
-	GtkWidget *spinner = pbox->spinner;
 	if (pbox->plugin_info->in_progress) {
 		gtk_widget_show(pbox->spinner);
 		gtk_spinner_start(GTK_SPINNER(pbox->spinner));
@@ -511,8 +508,15 @@ static void plugin_box_install_cb(GtkWidget *widget, gpointer data)
 	PluginBox *pbox = data;
 	RegistryPluginInfo *info = pbox->plugin_info;
 
+	registry_plugin_download_install(pbox);
+
+	plugin_box_update_buttons(pbox);
+}
+
+static gint registry_plugin_download_install(PluginBox *pbox)
+{
+	RegistryPluginInfo *info = pbox->plugin_info;
 	info->in_progress = TRUE;
-	plugin_box_update_spinner(pbox);
 	info->tmp_download_filename = get_tmp_file();
 
 	/* Download the plugin to a temp file */
@@ -520,13 +524,10 @@ static void plugin_box_install_cb(GtkWidget *widget, gpointer data)
 				info->tmp_download_filename, pbox) < 0) {
 		registry.status = REGISTRY_STATUS_ERROR;
 		error_dialog(_("Couldn't download the plug-in"));
-		return;
+		return -1;
 	}
 
-	if (info->user_removed) {
-		info->user_removed = FALSE;
-	}
-	plugin_box_update_buttons(pbox);
+	return 0;
 }
 
 static void plugin_download_cb(GPid pid, gint status, gpointer data)
@@ -535,24 +536,35 @@ static void plugin_download_cb(GPid pid, gint status, gpointer data)
 	RegistryPluginInfo *info = pbox->plugin_info;
 
 	/* Verify the plugin's sha1sum */
-	if (registry_plugin_verify(info,
-				info->tmp_download_filename) < 0) {
+	debug_print("verify\n");
+	if (registry_plugin_verify(info, info->tmp_download_filename) < 0) {
 		error_dialog(_("The plug-in could not be verified"));
-	/* Load the file from the temp directory */
-	} else if (registry_plugin_load(info,
-				info->tmp_download_filename) < 0) {
-		error_dialog(_("Unable to load the plugin"));
-	/* Install the file to the plugins directory */
-	} else if (registry_plugin_install(info,
-				info->tmp_download_filename) < 0) {
-		error_dialog(_("Plug-in was loaded but not installed."));
-	} else {
-		notice_dialog(_("Plug-in installed!"));
+		goto out;
 	}
-	g_free(info->tmp_download_filename);
 
+	/* Load the file from the temp directory */
+	debug_print("load\n");
+	if (registry_plugin_load(info, info->tmp_download_filename) < 0) {
+		error_dialog(_("Unable to load the plugin"));
+		goto out;
+	}
+
+	/* Install the file to the plugins directory */
+	debug_print("install\n");
+	if (registry_plugin_install(info, info->tmp_download_filename) < 0) {
+		error_dialog(_("Plug-in was loaded but not installed."));
+		goto out;
+	}
+
+	notice_dialog(_("Plug-in installed!"));
+
+	if (info->user_removed) {
+		info->user_removed = FALSE;
+	}
+
+out:
+	g_free(info->tmp_download_filename);
 	info->in_progress = FALSE;
-	plugin_box_update_spinner(pbox);
 	plugin_box_update_buttons(pbox);
 }
 
@@ -629,6 +641,25 @@ static gint registry_plugin_install(RegistryPluginInfo *info,
 	return 0;
 }
 
+static void plugin_box_update_cb(GtkWidget *widget, gpointer data)
+{
+	PluginBox *pbox = data;
+	RegistryPluginInfo *info = pbox->plugin_info;
+	GModule *module = info->installed_module;
+
+	g_return_val_if_fail(module != NULL, NULL);
+
+	if (registry_plugin_uninstall(pbox->plugin_info) < 0) {
+		error_dialog(_("Unable to remove the current version of "
+					"the plugin."));
+		return;
+	}
+
+	registry_plugin_download_install(pbox);
+
+	plugin_box_update_buttons(pbox);
+}
+
 static void plugin_box_remove_cb(GtkWidget *widget, gpointer data)
 {
 	PluginBox *pbox = data;
@@ -653,7 +684,7 @@ static gint registry_plugin_uninstall(RegistryPluginInfo *info)
 	gchar *dest;
 	int ret;
 
-	g_return_val_if_fail(filename != NULL, NULL);
+	g_return_val_if_fail(filename != NULL, -1);
 
 	/* Move the module into the temp directory */
 	dest = g_strconcat(get_tmp_dir(), G_DIR_SEPARATOR_S,
