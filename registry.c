@@ -647,7 +647,9 @@ static void plugin_box_update_cb(GtkWidget *widget, gpointer data)
 	RegistryPluginInfo *info = pbox->plugin_info;
 	GModule *module = info->installed_module;
 
-	g_return_val_if_fail(module != NULL, NULL);
+	if (module == NULL) {
+		return;
+	}
 
 	if (registry_plugin_uninstall(pbox->plugin_info) < 0) {
 		error_dialog(_("Unable to remove the current version of "
@@ -666,7 +668,9 @@ static void plugin_box_remove_cb(GtkWidget *widget, gpointer data)
 	RegistryPluginInfo *info = pbox->plugin_info;
 	GModule *module = info->installed_module;
 
-	g_return_val_if_fail(module != NULL, NULL);
+	if (module == NULL) {
+		return;
+	}
 
 	if (registry_plugin_uninstall(pbox->plugin_info) < 0) {
 		error_dialog(_("Unable to remove the plugin."));
