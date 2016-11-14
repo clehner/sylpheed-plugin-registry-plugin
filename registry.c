@@ -685,25 +685,19 @@ static void plugin_box_remove_cb(GtkWidget *widget, gpointer data)
 static gint registry_plugin_uninstall(RegistryPluginInfo *info)
 {
 	const gchar *filename = info->installed_filename;
-	gchar *dest;
 	int ret;
 
 	g_return_val_if_fail(filename != NULL, -1);
 
-	/* Move the module into the temp directory */
-	dest = g_strconcat(get_tmp_dir(), G_DIR_SEPARATOR_S,
-			info->id, ".", G_MODULE_SUFFIX, NULL);
-	debug_print("moving plugin from %s to %s\n", filename, dest);
-	if (g_rename(filename, dest) < 0) {
-		FILE_OP_ERROR(filename, "g_rename");
-		g_free(dest);
+	/* Delete the module file */
+	debug_print("unlinking %s\n", filename);
+	if (g_unlink(filename) < 0) {
+		FILE_OP_ERROR(filename, "g_unlink");
 		ret = -1;
 	} else {
 		info->user_removed = TRUE;
 		ret = 0;
 	}
-
-	g_free(dest);
 
 	return ret;
 }
