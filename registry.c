@@ -517,7 +517,9 @@ static gint registry_plugin_download_install(PluginBox *pbox)
 {
 	RegistryPluginInfo *info = pbox->plugin_info;
 	info->in_progress = TRUE;
-	info->tmp_download_filename = get_tmp_file();
+	info->tmp_download_filename = g_strconcat(get_rc_dir(), G_DIR_SEPARATOR_S,
+			PLUGIN_DIR, G_DIR_SEPARATOR_S,
+			info->id, ".", G_MODULE_SUFFIX, "~", NULL);
 
 	/* Download the plugin to a temp file */
 	if (spawn_curl(info->install_url, plugin_download_cb,
